@@ -73,6 +73,11 @@ target_sources(app PRIVATE
   watchdog.c
 )
 
+# Non-volatile security counter
+if (DEFINED CONFIG_MCUBOOT_HW_DOWNGRADE_PREVENTION)
+  add_subdirectory(security_counter)
+endif()
+
 if(CONFIG_ARM)
   target_sources(app PRIVATE arch/arm.c)
 elseif(CONFIG_SOC_FAMILY_ESPRESSIF_ESP32)
