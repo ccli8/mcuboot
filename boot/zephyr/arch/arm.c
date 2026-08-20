@@ -123,6 +123,20 @@ void do_boot(const struct boot_rsp *rsp)
 		BOOT_LOG_WRN("USB DFU disable failed: %d", usbd_rc);
 	}
 #endif
+
+#if defined(CONFIG_SOC_FAMILY_NUMAKER)
+#if defined(CONFIG_ARM_SECURE_FIRMWARE)
+	extern void Boot_NonSecure(uint32_t u32NonSecureBase);
+	uint32_t vt_addr_ns = FMC_NON_SECURE_BASE + rsp->br_hdr->ih_hdr_size;
+	if ((uint32_t)vt == vt_addr_ns) {
+		BOOT_LOG_INF("Branch to Non-Secure image (0x%08lx)", vt_addr_ns);
+		Boot_NonSecure(vt_addr_ns);
+		BOOT_LOG_ERR("Boot_NonSecure failed");
+	}
+	BOOT_LOG_INF("Branch to Secure image (0x%08x)", (uint32_t)vt);
+#endif
+#endif
+
 #if CONFIG_MCUBOOT_CLEANUP_ARM_CORE
 	cleanup_arm_interrupts(); /* Disable and acknowledge all interrupts */
 
@@ -236,3 +250,41 @@ void do_boot(const struct boot_rsp *rsp)
 
 #endif
 }
+
+#if defined(CONFIG_SOC_FAMILY_NUMAKER)
+#if defined(CONFIG_ARM_SECURE_FIRMWARE)
+
+#include <arm_cmse.h>
+
+typedef __NONSECURE_CALL int32_t (*PFN_NON_SECURE_FUNC)(uint32_t);
+
+/*---------------------------------------------------------------------------
+ * Boot_NonSecure function is used to jump to Non-secure boot code.
+ *---------------------------------------------------------------------------*/
+void Boot_NonSecure(uint32_t u32NonSecureBase)
+{
+    PFN_NON_SECURE_FUNC pfnNonSecureEntry;
+
+    /* SCB_NS.VTOR points to the Non-secure vector table base address. */
+    SCB_NS->VTOR = u32NonSecureBase;
+
+    /* 1st Entry in the vector table is the Non-secure Main Stack Pointer. */
+    __TZ_set_MSP_NS(*((uint32_t *)SCB_NS->VTOR));      /* Set up MSP in Non-secure code */
+
+    /* 2nd entry contains the address of the Reset_Handler (CMSIS-CORE) function */
+    pfnNonSecureEntry = ((PFN_NON_SECURE_FUNC)(*(((uint32_t *)SCB_NS->VTOR) + 1)));
+
+    /* Clear the LSB of the function address to indicate the function-call
+       will cause a state switch from Secure to Non-secure */
+    pfnNonSecureEntry = cmse_nsfptr_create(pfnNonSecureEntry);
+
+    /* Check if the Reset_Handler address is in Non-secure space */
+    if (cmse_is_nsfptr(pfnNonSecureEntry) && (((uint32_t)pfnNonSecureEntry & 0xF0000000) == NS_OFFSET))
+    {
+        BOOT_LOG_INF("Execute Non-secure code ...\n");
+        pfnNonSecureEntry(0);   /* Non-secure function entry */
+    }
+}
+
+#endif
+#endif
