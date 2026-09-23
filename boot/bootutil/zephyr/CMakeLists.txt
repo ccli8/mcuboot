@@ -41,3 +41,6 @@ if(CONFIG_MCUBOOT_BOOTUTIL_LIB)
     zephyr_link_libraries_ifdef(CONFIG_MBEDTLS_BUILTIN mbedTLS)
   endif()
 endif()
+
+# Nuvoton-specific
+add_subdirectory_ifdef(CONFIG_SOC_FAMILY_NUMAKER nuvoton)
